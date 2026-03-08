@@ -27,3 +27,7 @@ type BookmarkStore interface {
 type SchemaValidator interface {
 	Validate(data []byte) error
 }
+
+type SkillInstaller interface {
+	Install(dir string, skill []byte, schema []byte) error
+}

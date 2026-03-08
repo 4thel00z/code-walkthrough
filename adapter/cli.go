@@ -10,7 +10,7 @@ import (
 	"github.com/tahrioui/code-walkthrough/port"
 )
 
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(embeddedSkill, embeddedSchema []byte) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "walkthrough",
 		Short: "Interactive code walkthrough viewer",
@@ -18,6 +18,7 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(newViewCmd())
 	root.AddCommand(newExportCmd())
+	root.AddCommand(newInstallCmd(embeddedSkill, embeddedSchema))
 
 	return root
 }
@@ -97,5 +98,32 @@ func newExportCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&format, "format", "f", "markdown", "Export format: markdown or html")
+	return cmd
+}
+
+func newInstallCmd(skill, schema []byte) *cobra.Command {
+	var dir string
+
+	cmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install the code-walkthrough skill for Claude Code",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			installer := NewFileSkillInstaller()
+			uc := application.NewInstallSkillUseCase(installer, skill, schema)
+
+			if dir == "" {
+				dir = uc.DefaultInstallDir()
+			}
+
+			if err := uc.Install(dir); err != nil {
+				return fmt.Errorf("installing skill: %w", err)
+			}
+
+			fmt.Fprintf(os.Stderr, "Skill installed to %s\n", dir)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&dir, "dir", "d", "", "Installation directory (default: .claude/skills/code-walkthrough)")
 	return cmd
 }

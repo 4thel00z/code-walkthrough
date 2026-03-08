@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Code Walkthrough",
+  "type": "object",
+  "required": ["title", "scope", "sections"],
+  "properties": {
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "scope": { "enum": ["flow", "overview"] },
+    "repository": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "steps"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "explanation"],
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "explanation": { "type": "string" },
+                "codeSnippet": {
+                  "type": "object",
+                  "required": ["filePath", "language", "source"],
+                  "properties": {
+                    "filePath": { "type": "string" },
+                    "language": { "type": "string" },
+                    "startLine": { "type": "integer" },
+                    "endLine": { "type": "integer" },
+                    "source": { "type": "string" }
+                  }
+                },
+                "diagram": {
+                  "type": "object",
+                  "required": ["type", "mermaid"],
+                  "properties": {
+                    "type": { "enum": ["sequence", "flowchart", "classDiagram", "graph"] },
+                    "mermaid": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

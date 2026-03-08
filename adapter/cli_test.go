@@ -2,6 +2,8 @@ package adapter_test
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +11,7 @@ import (
 	"github.com/tahrioui/code-walkthrough/adapter"
 	"github.com/tahrioui/code-walkthrough/application"
 	"github.com/tahrioui/code-walkthrough/port"
+	"github.com/tahrioui/code-walkthrough/skilldata"
 )
 
 func TestEndToEnd_LoadAndExportMarkdown(t *testing.T) {
@@ -37,4 +40,30 @@ func TestEndToEnd_LoadAndExportMarkdown(t *testing.T) {
 	assert.Contains(t, output, "SetupRoutes")
 	assert.Contains(t, output, "## Authentication")
 	assert.Contains(t, output, "GenerateToken")
+}
+
+func TestInstallCmd_WritesFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "install-test")
+
+	cmd := adapter.NewRootCmd([]byte("# Test Skill"), []byte(`{"test":true}`))
+	cmd.SetArgs([]string{"install", "--dir", dir})
+
+	err := cmd.Execute()
+	require.NoError(t, err)
+
+	gotSkill, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# Test Skill", string(gotSkill))
+
+	gotSchema, err := os.ReadFile(filepath.Join(dir, "walkthrough.schema.json"))
+	require.NoError(t, err)
+	assert.Equal(t, `{"test":true}`, string(gotSchema))
+}
+
+func TestEmbeddedSchema_MatchesCanonical(t *testing.T) {
+	canonical, err := os.ReadFile("../schema/walkthrough.schema.json")
+	require.NoError(t, err)
+
+	assert.Equal(t, string(canonical), string(skilldata.SchemaJSON),
+		"skilldata/walkthrough.schema.json is out of sync with schema/walkthrough.schema.json")
 }
