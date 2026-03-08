@@ -1,7 +1,15 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+
+	"github.com/tahrioui/code-walkthrough/adapter"
+)
 
 func main() {
-	fmt.Println("code-walkthrough")
+	if err := adapter.NewRootCmd().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
