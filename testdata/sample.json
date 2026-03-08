@@ -1,0 +1,60 @@
+{
+  "title": "Sample Walkthrough",
+  "description": "A sample walkthrough for testing",
+  "scope": "flow",
+  "repository": "/test/repo",
+  "generatedAt": "2026-03-01T12:00:00Z",
+  "sections": [
+    {
+      "id": "sec-1",
+      "title": "Entry Point",
+      "description": "Where requests enter the system",
+      "steps": [
+        {
+          "id": "step-1-1",
+          "title": "Router receives request",
+          "explanation": "The router matches the incoming HTTP request to a handler.",
+          "codeSnippet": {
+            "filePath": "router/routes.go",
+            "language": "go",
+            "startLine": 10,
+            "endLine": 15,
+            "source": "func SetupRoutes(r *mux.Router) {\n    r.HandleFunc(\"/api/login\", Login).Methods(\"POST\")\n}"
+          },
+          "diagram": {
+            "type": "sequence",
+            "mermaid": "sequenceDiagram\n    Client->>Router: POST /api/login\n    Router->>Handler: Login()"
+          }
+        },
+        {
+          "id": "step-1-2",
+          "title": "Handler validates input",
+          "explanation": "The login handler parses the request body and validates credentials."
+        }
+      ]
+    },
+    {
+      "id": "sec-2",
+      "title": "Authentication",
+      "description": "How the auth system validates users",
+      "steps": [
+        {
+          "id": "step-2-1",
+          "title": "Token generation",
+          "explanation": "After validation, a JWT token is generated and returned.",
+          "codeSnippet": {
+            "filePath": "auth/token.go",
+            "language": "go",
+            "startLine": 25,
+            "endLine": 35,
+            "source": "func GenerateToken(userID string) (string, error) {\n    claims := jwt.MapClaims{\"sub\": userID}\n    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)\n    return token.SignedString(secretKey)\n}"
+          },
+          "diagram": {
+            "type": "flowchart",
+            "mermaid": "flowchart TD\n    A[Validate Credentials] --> B[Generate JWT]\n    B --> C[Return Token]"
+          }
+        }
+      ]
+    }
+  ]
+}
