@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tahrioui/code-walkthrough/adapter"
-	"github.com/tahrioui/code-walkthrough/domain"
+	"github.com/4thel00z/code-walkthrough/adapter"
+	"github.com/4thel00z/code-walkthrough/domain"
 )
 
 const testJSON = `{

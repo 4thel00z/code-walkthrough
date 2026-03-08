@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tahrioui/code-walkthrough/adapter"
-	"github.com/tahrioui/code-walkthrough/skilldata"
+	"github.com/4thel00z/code-walkthrough/adapter"
+	"github.com/4thel00z/code-walkthrough/skilldata"
 )
 
 func main() {

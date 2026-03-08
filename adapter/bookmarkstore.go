@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/tahrioui/code-walkthrough/domain"
+	"github.com/4thel00z/code-walkthrough/domain"
 )
 
 type jsonBookmark struct {

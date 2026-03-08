@@ -1,6 +1,6 @@
 package port
 
-import "github.com/tahrioui/code-walkthrough/domain"
+import "github.com/4thel00z/code-walkthrough/domain"
 
 type WalkthroughRepository interface {
 	Read(path string) ([]byte, error)

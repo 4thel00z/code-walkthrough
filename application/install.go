@@ -3,7 +3,7 @@ package application
 import (
 	"path/filepath"
 
-	"github.com/tahrioui/code-walkthrough/port"
+	"github.com/4thel00z/code-walkthrough/port"
 )
 
 type InstallSkillUseCase struct {

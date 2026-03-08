@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/tahrioui/code-walkthrough/application"
-	"github.com/tahrioui/code-walkthrough/port"
+	"github.com/4thel00z/code-walkthrough/application"
+	"github.com/4thel00z/code-walkthrough/port"
 )
 
 func NewRootCmd(embeddedSkill, embeddedSchema []byte) *cobra.Command {

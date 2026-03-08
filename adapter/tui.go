@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/tahrioui/code-walkthrough/application"
-	"github.com/tahrioui/code-walkthrough/domain"
+	"github.com/4thel00z/code-walkthrough/application"
+	"github.com/4thel00z/code-walkthrough/domain"
 )
 
 type viewMode int

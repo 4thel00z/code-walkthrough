@@ -1,4 +1,4 @@
-module github.com/tahrioui/code-walkthrough
+module github.com/4thel00z/code-walkthrough
 
 go 1.25.4
 

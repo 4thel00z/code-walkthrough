@@ -3,8 +3,8 @@ package application
 import (
 	"time"
 
-	"github.com/tahrioui/code-walkthrough/domain"
-	"github.com/tahrioui/code-walkthrough/port"
+	"github.com/4thel00z/code-walkthrough/domain"
+	"github.com/4thel00z/code-walkthrough/port"
 )
 
 type BookmarkUseCase struct {

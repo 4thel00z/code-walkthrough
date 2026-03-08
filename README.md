@@ -35,13 +35,13 @@ An AI agent skill and interactive TUI that generates step-by-step code walkthrou
 ### From source
 
 ```bash
-go install github.com/your-org/code-walkthrough/cmd/walkthrough@latest
+go install github.com/4thel00z/code-walkthrough/...@latest
 ```
 
 ### Build locally
 
 ```bash
-git clone https://github.com/your-org/code-walkthrough.git
+git clone https://github.com/4thel00z/code-walkthrough.git
 cd code-walkthrough
 go build -o walkthrough ./cmd/walkthrough
 ```

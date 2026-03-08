@@ -1,6 +1,6 @@
 package application
 
-import "github.com/tahrioui/code-walkthrough/domain"
+import "github.com/4thel00z/code-walkthrough/domain"
 
 type NavigateUseCase struct {
 	nav         *domain.Navigator

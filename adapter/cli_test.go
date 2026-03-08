@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tahrioui/code-walkthrough/adapter"
-	"github.com/tahrioui/code-walkthrough/application"
-	"github.com/tahrioui/code-walkthrough/port"
-	"github.com/tahrioui/code-walkthrough/skilldata"
+	"github.com/4thel00z/code-walkthrough/adapter"
+	"github.com/4thel00z/code-walkthrough/application"
+	"github.com/4thel00z/code-walkthrough/port"
+	"github.com/4thel00z/code-walkthrough/skilldata"
 )
 
 func TestEndToEnd_LoadAndExportMarkdown(t *testing.T) {

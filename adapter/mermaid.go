@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tahrioui/code-walkthrough/domain"
+	"github.com/4thel00z/code-walkthrough/domain"
 )
 
 // MermaidRenderer implements port.DiagramRenderer

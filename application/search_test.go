@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tahrioui/code-walkthrough/application"
-	"github.com/tahrioui/code-walkthrough/domain"
+	"github.com/4thel00z/code-walkthrough/application"
+	"github.com/4thel00z/code-walkthrough/domain"
 )
 
 func TestSearchUseCase_Search(t *testing.T) {
