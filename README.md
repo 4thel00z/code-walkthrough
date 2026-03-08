@@ -76,7 +76,13 @@ The agent analyzes the repository and writes a walkthrough to `.walkthrough/walk
 ### 3. View interactively
 
 ```bash
-walkthrough view .walkthrough/walkthrough.json
+walkthrough view
+```
+
+This defaults to `.walkthrough/walkthrough.json`. You can also specify a path explicitly:
+
+```bash
+walkthrough view path/to/walkthrough.json
 ```
 
 ### 4. Export to documentation

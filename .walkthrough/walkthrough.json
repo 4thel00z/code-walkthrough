@@ -1,0 +1,311 @@
+{
+  "title": "Code Walkthrough CLI — Architecture Overview",
+  "description": "An interactive terminal tool for viewing structured code walkthroughs. Built in Go using hexagonal architecture with Cobra for CLI, Bubble Tea for TUI, and Lipgloss for styling. The tool loads JSON walkthrough files and presents them as navigable, searchable, bookmarkable step-by-step explorations with Mermaid diagram rendering.",
+  "scope": "overview",
+  "repository": "github.com/4thel00z/code-walkthrough",
+  "generatedAt": "2026-03-08T00:00:00Z",
+  "sections": [
+    {
+      "id": "entry-point",
+      "title": "Entry Point & CLI Bootstrap",
+      "description": "How the application starts: from main.go through Cobra command registration to subcommand dispatch.",
+      "steps": [
+        {
+          "id": "entry-point/1",
+          "title": "main.go — Application Entry",
+          "explanation": "The binary entry point lives in `cmd/walkthrough/main.go`. It does exactly one thing: constructs the root Cobra command with embedded skill and schema data, then calls `Execute()`.\n\nThe embedded data (`skilldata.SkillMD` and `skilldata.SchemaJSON`) are compiled into the binary via Go's `//go:embed` directive. This means the CLI can install its own skill definition without needing external files at runtime.\n\nIf the command fails, the error is printed to stderr and the process exits with code 1. This is the standard Go CLI pattern — no global state, no init functions, just a clean handoff to Cobra.",
+          "codeSnippet": {
+            "filePath": "cmd/walkthrough/main.go",
+            "language": "go",
+            "startLine": 1,
+            "endLine": 16,
+            "source": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\n\t\"github.com/4thel00z/code-walkthrough/adapter\"\n\t\"github.com/4thel00z/code-walkthrough/skilldata\"\n)\n\nfunc main() {\n\tif err := adapter.NewRootCmd(skilldata.SkillMD, skilldata.SchemaJSON).Execute(); err != nil {\n\t\tfmt.Fprintln(os.Stderr, err)\n\t\tos.Exit(1)\n\t}\n}"
+          },
+          "diagram": {
+            "type": "flowchart",
+            "mermaid": "flowchart TD\n    A[main.go] --> B[adapter.NewRootCmd]\n    B --> C[cobra.Command.Execute]\n    C --> D{Subcommand?}\n    D --> E[view]\n    D --> F[export]\n    D --> G[install]"
+          }
+        },
+        {
+          "id": "entry-point/2",
+          "title": "Cobra Command Tree",
+          "explanation": "`NewRootCmd` in `adapter/cli.go` constructs the top-level `walkthrough` command and registers three subcommands: `view`, `export`, and `install`.\n\nEach subcommand follows the same pattern: parse arguments, construct adapters and use cases, then execute the operation. This is the **composition root** of the application — the only place where concrete types are wired together. The rest of the codebase depends only on interfaces (ports).\n\nThe `view` command is the most complex: it creates a `FileRepository`, `JSONLoader`, `NavigateUseCase`, `SearchUseCase`, `BookmarkUseCase`, and `MermaidRenderer`, then hands them all to the TUI `Model`. The `export` command is simpler, needing only the loader and export use case. The `install` command uses embedded byte slices to write skill files to disk.",
+          "codeSnippet": {
+            "filePath": "adapter/cli.go",
+            "language": "go",
+            "startLine": 13,
+            "endLine": 24,
+            "source": "func NewRootCmd(embeddedSkill, embeddedSchema []byte) *cobra.Command {\n\troot := &cobra.Command{\n\t\tUse:   \"walkthrough\",\n\t\tShort: \"Interactive code walkthrough viewer\",\n\t}\n\n\troot.AddCommand(newViewCmd())\n\troot.AddCommand(newExportCmd())\n\troot.AddCommand(newInstallCmd(embeddedSkill, embeddedSchema))\n\n\treturn root\n}"
+          },
+          "diagram": {
+            "type": "graph",
+            "mermaid": "graph LR\n    Root[walkthrough] --> View[view file.json]\n    Root --> Export[export file.json output]\n    Root --> Install[install --dir path]"
+          }
+        },
+        {
+          "id": "entry-point/3",
+          "title": "View Command — Wiring the Composition Root",
+          "explanation": "The `view` subcommand is the primary user-facing feature. It demonstrates the full hexagonal wiring: adapters are instantiated, domain objects are created, and use cases are composed.\n\nThe flow is: (1) create a `FileRepository` adapter for disk I/O, (2) wrap it in a `JSONLoader` that deserializes walkthrough JSON into domain models, (3) pass the loaded `Walkthrough` into `NavigateUseCase` and `SearchUseCase`, (4) set up bookmark persistence with a JSON file alongside the walkthrough, (5) create a `MermaidRenderer` for ASCII diagram output, and (6) hand everything to the Bubble Tea `Model` which runs the interactive TUI.\n\nThis is the only place in the codebase where all layers touch — domain, application, and adapter are all referenced here to wire the dependency graph.",
+          "codeSnippet": {
+            "filePath": "adapter/cli.go",
+            "language": "go",
+            "startLine": 26,
+            "endLine": 56,
+            "source": "func newViewCmd() *cobra.Command {\n\treturn &cobra.Command{\n\t\tUse:   \"view [file.json]\",\n\t\tShort: \"Open an interactive walkthrough in the TUI\",\n\t\tArgs:  cobra.ExactArgs(1),\n\t\tRunE: func(cmd *cobra.Command, args []string) error {\n\t\t\tpath := args[0]\n\n\t\t\trepo := NewFileRepository()\n\t\t\tloader := NewJSONLoader(repo)\n\n\t\t\tw, err := loader.Load(path)\n\t\t\tif err != nil {\n\t\t\t\treturn fmt.Errorf(\"loading walkthrough: %w\", err)\n\t\t\t}\n\n\t\t\tnav := application.NewNavigateUseCase(w)\n\t\t\tsrch := application.NewSearchUseCase(w)\n\n\t\t\tbmPath := filepath.Join(filepath.Dir(path), \".bookmarks.json\")\n\t\t\tbmStore := NewJSONBookmarkStore(bmPath)\n\t\t\tbm := application.NewBookmarkUseCase(bmStore)\n\t\t\tbm.LoadFromStore()\n\n\t\t\trenderer := NewMermaidRenderer()\n\n\t\t\tmodel := NewModel(w, nav, srch, bm, renderer)\n\t\t\treturn RunTUI(model)\n\t\t},\n\t}\n}"
+          },
+          "diagram": {
+            "type": "sequence",
+            "mermaid": "sequenceDiagram\n    participant CLI\n    participant FileRepo\n    participant JSONLoader\n    participant NavUC\n    participant SearchUC\n    participant TUI\n    CLI->>FileRepo: NewFileRepository()\n    CLI->>JSONLoader: Load(path)\n    JSONLoader->>FileRepo: Read(path)\n    CLI->>NavUC: NewNavigateUseCase(w)\n    CLI->>SearchUC: NewSearchUseCase(w)\n    CLI->>TUI: NewModel(...)\n    CLI->>TUI: RunTUI(model)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "domain-layer",
+      "title": "Domain Layer — Core Models",
+      "description": "The heart of the application: pure data structures and business logic with zero external dependencies.",
+      "steps": [
+        {
+          "id": "domain-layer/1",
+          "title": "Walkthrough, Section, and Step Models",
+          "explanation": "The domain model is a tree: a `Walkthrough` contains `Section`s, each containing `Step`s. Steps optionally carry a `CodeSnippet` (file path, language, line range, source code) and a `Diagram` (type + Mermaid DSL).\n\nStrong typing is used throughout: `StepID`, `SectionID`, `Scope`, and `DiagramType` are all named types rather than raw strings. This prevents accidental misuse at compile time — you can't pass a `SectionID` where a `StepID` is expected.\n\nThe model is deliberately anemic in the DDD sense: it's a value-oriented data structure with builder methods (`NewStep`, `SetCodeSnippet`, `AddSection`) but no complex business rules. The logic lives in the `Navigator` and `SearchIndex` types, which operate on these models.",
+          "codeSnippet": {
+            "filePath": "domain/model.go",
+            "language": "go",
+            "startLine": 1,
+            "endLine": 65,
+            "source": "package domain\n\nimport \"time\"\n\ntype StepID string\ntype SectionID string\n\ntype Scope string\n\nconst (\n\tScopeFlow     Scope = \"flow\"\n\tScopeOverview Scope = \"overview\"\n)\n\ntype DiagramType string\n\nconst (\n\tDiagramSequence  DiagramType = \"sequence\"\n\tDiagramFlowchart DiagramType = \"flowchart\"\n\tDiagramClass     DiagramType = \"classDiagram\"\n\tDiagramGraph     DiagramType = \"graph\"\n)\n\ntype CodeSnippet struct {\n\tFilePath  string\n\tLanguage  string\n\tStartLine int\n\tEndLine   int\n\tSource    string\n}\n\ntype Diagram struct {\n\tType    DiagramType\n\tMermaid string\n}\n\ntype Bookmark struct {\n\tStepID    StepID\n\tCreatedAt time.Time\n}\n\ntype Step struct {\n\tID          StepID\n\tTitle       string\n\tExplanation string\n\tCodeSnippet *CodeSnippet\n\tDiagram     *Diagram\n}\n\nfunc NewStep(id string, title, explanation string) Step {\n\treturn Step{\n\t\tID:          StepID(id),\n\t\tTitle:       title,\n\t\tExplanation: explanation,\n\t}\n}\n\nfunc (s *Step) SetCodeSnippet(snippet CodeSnippet) {\n\ts.CodeSnippet = &snippet\n}\n\nfunc (s *Step) SetDiagram(diagram Diagram) {\n\ts.Diagram = &diagram\n}"
+          },
+          "diagram": {
+            "type": "classDiagram",
+            "mermaid": "classDiagram\n    Walkthrough \"1\" --> \"*\" Section\n    Section \"1\" --> \"*\" Step\n    Step \"0..1\" --> \"1\" CodeSnippet\n    Step \"0..1\" --> \"1\" Diagram\n    class Walkthrough {\n        Title string\n        Scope Scope\n        Sections []Section\n    }\n    class Section {\n        ID SectionID\n        Title string\n        Steps []Step\n    }\n    class Step {\n        ID StepID\n        Title string\n        Explanation string\n    }"
+          }
+        },
+        {
+          "id": "domain-layer/2",
+          "title": "Navigator — Stateful Step Traversal",
+          "explanation": "The `Navigator` is the core interaction engine. It flattens the hierarchical section/step tree into a linear `flatSteps` slice and maintains a cursor (`index`) for sequential traversal.\n\nA `sectionMap` maps each flat index back to its parent `SectionID`, allowing the navigator to report which section the user is currently in without re-traversing the tree. This is an O(1) lookup at navigation time, built once during construction.\n\nThe API is intentionally simple: `Current()`, `Next()`, `Prev()`, `JumpTo(StepID)`, and `JumpToSection(SectionID)`. All methods return the step at the new position plus a sentinel error if navigation is impossible (e.g., `ErrAtEnd`, `ErrAtStart`, `ErrNoSteps`). This error-based boundary signaling lets callers decide how to handle edges — the TUI silently ignores them, but other consumers could show warnings.",
+          "codeSnippet": {
+            "filePath": "domain/navigator.go",
+            "language": "go",
+            "startLine": 16,
+            "endLine": 60,
+            "source": "type Navigator struct {\n\twalkthrough Walkthrough\n\tflatSteps   []Step\n\tsectionMap  map[int]SectionID\n\tindex       int\n}\n\nfunc NewNavigator(w Walkthrough) *Navigator {\n\tvar flat []Step\n\tsectionMap := make(map[int]SectionID)\n\tfor _, sec := range w.Sections {\n\t\tfor _, step := range sec.Steps {\n\t\t\tsectionMap[len(flat)] = sec.ID\n\t\t\tflat = append(flat, step)\n\t\t}\n\t}\n\treturn &Navigator{\n\t\twalkthrough: w,\n\t\tflatSteps:   flat,\n\t\tsectionMap:  sectionMap,\n\t\tindex:       0,\n\t}\n}\n\nfunc (n *Navigator) Current() (Step, error) {\n\tif len(n.flatSteps) == 0 {\n\t\treturn Step{}, ErrNoSteps\n\t}\n\treturn n.flatSteps[n.index], nil\n}\n\nfunc (n *Navigator) Next() (Step, error) {\n\tif len(n.flatSteps) == 0 {\n\t\treturn Step{}, ErrNoSteps\n\t}\n\tif n.index >= len(n.flatSteps)-1 {\n\t\treturn Step{}, ErrAtEnd\n\t}\n\tn.index++\n\treturn n.flatSteps[n.index], nil\n}"
+          },
+          "diagram": {
+            "type": "flowchart",
+            "mermaid": "flowchart LR\n    A[Sections with Steps] --> B[Flatten to []Step]\n    B --> C[index = 0]\n    C --> D{User Action}\n    D -->|Next| E[index++]\n    D -->|Prev| F[index--]\n    D -->|JumpTo| G[find by StepID]\n    D -->|JumpToSection| H[find first step in section]"
+          }
+        },
+        {
+          "id": "domain-layer/3",
+          "title": "SearchIndex — Full-Text Search Over Steps",
+          "explanation": "The `SearchIndex` provides case-insensitive substring search across all walkthrough content. During `Build()`, it concatenates each step's title, explanation, code source, file path, and Mermaid DSL into a single lowercased string per entry.\n\nSearch is a linear scan: for each entry, check if the lowercased query is a substring of the concatenated text. This is simple and fast enough for walkthroughs with hundreds of steps. The result includes the step ID, title, and parent section ID, giving the TUI enough information to display results and navigate to matches.\n\nThe index is decoupled from the Navigator — search results return step IDs that the Navigator's `JumpTo` method can consume. This separation means search doesn't need to know about navigation state, and vice versa.",
+          "codeSnippet": {
+            "filePath": "domain/search.go",
+            "language": "go",
+            "startLine": 19,
+            "endLine": 62,
+            "source": "type SearchIndex struct {\n\tentries []searchEntry\n}\n\nfunc (si *SearchIndex) Build(w Walkthrough) {\n\tsi.entries = nil\n\tfor _, sec := range w.Sections {\n\t\tfor _, step := range sec.Steps {\n\t\t\tvar parts []string\n\t\t\tparts = append(parts, step.Title, step.Explanation)\n\t\t\tif step.CodeSnippet != nil {\n\t\t\t\tparts = append(parts, step.CodeSnippet.Source, step.CodeSnippet.FilePath)\n\t\t\t}\n\t\t\tif step.Diagram != nil {\n\t\t\t\tparts = append(parts, step.Diagram.Mermaid)\n\t\t\t}\n\t\t\tsi.entries = append(si.entries, searchEntry{\n\t\t\t\tstepID:    step.ID,\n\t\t\t\tstepTitle: step.Title,\n\t\t\t\tsectionID: sec.ID,\n\t\t\t\ttext:      strings.ToLower(strings.Join(parts, \" \")),\n\t\t\t})\n\t\t}\n\t}\n}\n\nfunc (si *SearchIndex) Search(query string) []SearchResult {\n\tq := strings.ToLower(query)\n\tvar results []SearchResult\n\tfor _, entry := range si.entries {\n\t\tif strings.Contains(entry.text, q) {\n\t\t\tresults = append(results, SearchResult{\n\t\t\t\tStepID:    entry.stepID,\n\t\t\t\tStepTitle: entry.stepTitle,\n\t\t\t\tSectionID: entry.sectionID,\n\t\t\t})\n\t\t}\n\t}\n\treturn results\n}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "port-layer",
+      "title": "Port Layer — Hexagonal Boundaries",
+      "description": "Interfaces that define how the domain communicates with the outside world: inbound ports for use case contracts, outbound ports for infrastructure dependencies.",
+      "steps": [
+        {
+          "id": "port-layer/1",
+          "title": "Inbound Ports — Use Case Contracts",
+          "explanation": "The `port/inbound.go` file defines the interfaces that drive the application from the outside: `NavigationPort`, `SearchPort`, `BookmarkPort`, and `ExportPort`. These are the contracts that the TUI and CLI consume.\n\n`WalkthroughLoader` is also defined here as it represents the primary inbound operation — loading a walkthrough is what triggers everything else. The `ExportFormat` type with its `markdown` and `html` constants lives here because export format selection is a user-facing concern.\n\nThese interfaces ensure the TUI doesn't depend on concrete use case implementations. In practice, the application layer's use case structs satisfy these interfaces, but the TUI only sees the port signatures.",
+          "codeSnippet": {
+            "filePath": "port/inbound.go",
+            "language": "go",
+            "startLine": 1,
+            "endLine": 44,
+            "source": "package port\n\nimport (\n\t\"io\"\n\n\t\"github.com/4thel00z/code-walkthrough/domain\"\n)\n\ntype ExportFormat string\n\nconst (\n\tExportMarkdown ExportFormat = \"markdown\"\n\tExportHTML     ExportFormat = \"html\"\n)\n\ntype WalkthroughLoader interface {\n\tLoad(source string) (domain.Walkthrough, error)\n}\n\ntype NavigationPort interface {\n\tCurrent() (domain.Step, error)\n\tNext() (domain.Step, error)\n\tPrev() (domain.Step, error)\n\tJumpTo(id domain.StepID) (domain.Step, error)\n\tJumpToSection(id domain.SectionID) (domain.Step, error)\n\tCurrentSection() domain.Section\n\tCurrentIndex() int\n\tTotalSteps() int\n}\n\ntype SearchPort interface {\n\tSearch(query string) []domain.SearchResult\n}\n\ntype BookmarkPort interface {\n\tAdd(id domain.StepID) error\n\tRemove(id domain.StepID) error\n\tList() []domain.Bookmark\n\tIsBookmarked(id domain.StepID) bool\n}\n\ntype ExportPort interface {\n\tExport(format ExportFormat, w io.Writer) error\n}"
+          },
+          "diagram": {
+            "type": "classDiagram",
+            "mermaid": "classDiagram\n    class NavigationPort {\n        <<interface>>\n        Current() Step\n        Next() Step\n        Prev() Step\n        JumpTo(StepID) Step\n    }\n    class SearchPort {\n        <<interface>>\n        Search(query) []SearchResult\n    }\n    class BookmarkPort {\n        <<interface>>\n        Add(StepID)\n        Remove(StepID)\n        List() []Bookmark\n    }\n    class ExportPort {\n        <<interface>>\n        Export(format, writer)\n    }"
+          }
+        },
+        {
+          "id": "port-layer/2",
+          "title": "Outbound Ports — Infrastructure Contracts",
+          "explanation": "The `port/outbound.go` file defines what the application layer needs from the outside world: file I/O (`WalkthroughRepository`), diagram rendering (`DiagramRenderer`), terminal presentation (`Presenter`), bookmark persistence (`BookmarkStore`), JSON validation (`SchemaValidator`), and skill installation (`SkillInstaller`).\n\nThis is the hexagonal architecture's key insight: the domain and application layers define what they need via interfaces, and the adapter layer provides concrete implementations. The dependency arrows point inward — adapters depend on ports, not the other way around.\n\n`DiagramRenderer` is particularly interesting: it takes a `domain.Diagram` and a width, returning an ASCII string. This abstraction lets the Mermaid-to-ASCII renderer be swapped for any other rendering strategy without touching the application or domain code.",
+          "codeSnippet": {
+            "filePath": "port/outbound.go",
+            "language": "go",
+            "startLine": 1,
+            "endLine": 34,
+            "source": "package port\n\nimport \"github.com/4thel00z/code-walkthrough/domain\"\n\ntype WalkthroughRepository interface {\n\tRead(path string) ([]byte, error)\n\tWrite(path string, data []byte) error\n}\n\ntype DiagramRenderer interface {\n\tRender(diagram domain.Diagram, width int) (string, error)\n}\n\ntype Presenter interface {\n\tRenderStep(step domain.Step, sectionTitle string, stepIndex, totalSteps, sectionIndex, totalSections int)\n\tRenderDiagram(ascii string)\n\tRenderTOC(sections []domain.Section)\n\tRenderSearchResults(results []domain.SearchResult)\n\tRenderBookmarks(bookmarks []domain.Bookmark)\n}\n\ntype BookmarkStore interface {\n\tSave(bookmarks []domain.Bookmark) error\n\tLoad() ([]domain.Bookmark, error)\n}\n\ntype SchemaValidator interface {\n\tValidate(data []byte) error\n}\n\ntype SkillInstaller interface {\n\tInstall(dir string, skill []byte, schema []byte) error\n}"
+          },
+          "diagram": {
+            "type": "graph",
+            "mermaid": "graph TB\n    App[Application Layer] -->|depends on| WR[WalkthroughRepository]\n    App -->|depends on| DR[DiagramRenderer]\n    App -->|depends on| BS[BookmarkStore]\n    App -->|depends on| SI[SkillInstaller]\n    FR[FileRepository] -->|implements| WR\n    MR[MermaidRenderer] -->|implements| DR\n    JBS[JSONBookmarkStore] -->|implements| BS\n    FSI[FileSkillInstaller] -->|implements| SI"
+          }
+        }
+      ]
+    },
+    {
+      "id": "application-layer",
+      "title": "Application Layer — Use Cases",
+      "description": "Orchestration logic that coordinates domain objects with outbound ports. Each use case is a thin wrapper that connects domain logic to infrastructure.",
+      "steps": [
+        {
+          "id": "application-layer/1",
+          "title": "NavigateUseCase — Step Traversal Orchestration",
+          "explanation": "The `NavigateUseCase` wraps the domain `Navigator` and exposes a slightly different API surface. While the Navigator has `Next()` and `Prev()`, the use case names them `StepForward()` and `StepBackward()` for clarity at the application boundary.\n\nIt also adds `ViewTOC()` which returns the raw section list for table-of-contents display — something the Navigator doesn't concern itself with. The use case keeps a reference to both the `Navigator` and the original `Walkthrough` to serve both navigation and structural queries.\n\nThis is a classic application-layer pattern: the use case doesn't add complex logic, but it provides a clean API boundary and could add cross-cutting concerns (logging, metrics, authorization) without polluting the domain.",
+          "codeSnippet": {
+            "filePath": "application/navigate.go",
+            "language": "go",
+            "startLine": 1,
+            "endLine": 52,
+            "source": "package application\n\nimport \"github.com/4thel00z/code-walkthrough/domain\"\n\ntype NavigateUseCase struct {\n\tnav         *domain.Navigator\n\twalkthrough domain.Walkthrough\n}\n\nfunc NewNavigateUseCase(w domain.Walkthrough) *NavigateUseCase {\n\treturn &NavigateUseCase{\n\t\tnav:         domain.NewNavigator(w),\n\t\twalkthrough: w,\n\t}\n}\n\nfunc (uc *NavigateUseCase) Current() (domain.Step, error) {\n\treturn uc.nav.Current()\n}\n\nfunc (uc *NavigateUseCase) StepForward() (domain.Step, error) {\n\treturn uc.nav.Next()\n}\n\nfunc (uc *NavigateUseCase) StepBackward() (domain.Step, error) {\n\treturn uc.nav.Prev()\n}\n\nfunc (uc *NavigateUseCase) JumpTo(id domain.StepID) (domain.Step, error) {\n\treturn uc.nav.JumpTo(id)\n}\n\nfunc (uc *NavigateUseCase) JumpToSection(id domain.SectionID) (domain.Step, error) {\n\treturn uc.nav.JumpToSection(id)\n}\n\nfunc (uc *NavigateUseCase) CurrentSection() domain.Section {\n\treturn uc.nav.CurrentSection()\n}\n\nfunc (uc *NavigateUseCase) CurrentIndex() int {\n\treturn uc.nav.CurrentIndex()\n}\n\nfunc (uc *NavigateUseCase) TotalSteps() int {\n\treturn uc.nav.TotalSteps()\n}\n\nfunc (uc *NavigateUseCase) ViewTOC() []domain.Section {\n\treturn uc.walkthrough.Sections\n}"
+          }
+        },
+        {
+          "id": "application-layer/2",
+          "title": "ExportUseCase — Markdown & HTML Generation",
+          "explanation": "The `ExportUseCase` transforms a `Walkthrough` into either Markdown or HTML, writing to any `io.Writer`. It delegates diagram rendering to the injected `DiagramRenderer` port, keeping format-specific logic contained.\n\nThe Markdown exporter walks the section/step tree and writes formatted headers, explanations, fenced code blocks, and rendered diagrams. The HTML exporter does the same with HTML tags and includes a minimal inline stylesheet for monospace rendering.\n\nBoth formats use `io.Writer` as their output abstraction, meaning they work equally well writing to files, stdout, network connections, or in-memory buffers. The format selection is a simple switch on the `ExportFormat` port type.",
+          "codeSnippet": {
+            "filePath": "application/export.go",
+            "language": "go",
+            "startLine": 20,
+            "endLine": 58,
+            "source": "func (uc *ExportUseCase) Export(format port.ExportFormat, w io.Writer) error {\n\tswitch format {\n\tcase port.ExportMarkdown:\n\t\treturn uc.exportMarkdown(w)\n\tcase port.ExportHTML:\n\t\treturn uc.exportHTML(w)\n\tdefault:\n\t\treturn fmt.Errorf(\"unsupported export format: %s\", format)\n\t}\n}\n\nfunc (uc *ExportUseCase) exportMarkdown(w io.Writer) error {\n\twt := uc.walkthrough\n\tfmt.Fprintf(w, \"# %s\\n\\n\", wt.Title)\n\tif wt.Description != \"\" {\n\t\tfmt.Fprintf(w, \"%s\\n\\n\", wt.Description)\n\t}\n\n\tfor _, sec := range wt.Sections {\n\t\tfmt.Fprintf(w, \"## %s\\n\\n\", sec.Title)\n\t\tif sec.Description != \"\" {\n\t\t\tfmt.Fprintf(w, \"%s\\n\\n\", sec.Description)\n\t\t}\n\t\tfor _, step := range sec.Steps {\n\t\t\tfmt.Fprintf(w, \"### %s\\n\\n\", step.Title)\n\t\t\tfmt.Fprintf(w, \"%s\\n\\n\", step.Explanation)\n\t\t\tif step.CodeSnippet != nil {\n\t\t\t\tfmt.Fprintf(w, \"```%s\\n%s\\n```\\n\\n\", step.CodeSnippet.Language, step.CodeSnippet.Source)\n\t\t\t}\n\t\t\tif step.Diagram != nil {\n\t\t\t\tascii, err := uc.renderer.Render(*step.Diagram, 80)\n\t\t\t\tif err == nil {\n\t\t\t\t\tfmt.Fprintf(w, \"%s\\n\\n\", ascii)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn nil\n}"
+          }
+        },
+        {
+          "id": "application-layer/3",
+          "title": "BookmarkUseCase — Persistent Step Bookmarks",
+          "explanation": "The `BookmarkUseCase` manages a list of bookmarked steps with add/remove/list/check operations. It uses an in-memory `lookup` map for O(1) bookmark checks (important for the TUI which checks on every render) and delegates persistence to a `BookmarkStore` port.\n\nEvery mutation (add or remove) immediately persists the full bookmark list via `store.Save()`. This simple \"save everything on every change\" strategy avoids complex change tracking. Since bookmark lists are small (tens of entries at most), the overhead is negligible.\n\n`LoadFromStore()` is called once at startup to hydrate the in-memory state. The idempotent `Add()` — which no-ops if already bookmarked — and `Remove()` — which no-ops if not bookmarked — prevent duplicate entries and unnecessary writes.",
+          "codeSnippet": {
+            "filePath": "application/bookmark.go",
+            "language": "go",
+            "startLine": 10,
+            "endLine": 46,
+            "source": "type BookmarkUseCase struct {\n\tstore     port.BookmarkStore\n\tbookmarks []domain.Bookmark\n\tlookup    map[domain.StepID]bool\n}\n\nfunc NewBookmarkUseCase(store port.BookmarkStore) *BookmarkUseCase {\n\treturn &BookmarkUseCase{\n\t\tstore:  store,\n\t\tlookup: make(map[domain.StepID]bool),\n\t}\n}\n\nfunc (uc *BookmarkUseCase) Add(id domain.StepID) error {\n\tif uc.lookup[id] {\n\t\treturn nil\n\t}\n\tb := domain.Bookmark{StepID: id, CreatedAt: time.Now()}\n\tuc.bookmarks = append(uc.bookmarks, b)\n\tuc.lookup[id] = true\n\treturn uc.store.Save(uc.bookmarks)\n}\n\nfunc (uc *BookmarkUseCase) Remove(id domain.StepID) error {\n\tif !uc.lookup[id] {\n\t\treturn nil\n\t}\n\tvar filtered []domain.Bookmark\n\tfor _, b := range uc.bookmarks {\n\t\tif b.StepID != id {\n\t\t\tfiltered = append(filtered, b)\n\t\t}\n\t}\n\tuc.bookmarks = filtered\n\tdelete(uc.lookup, id)\n\treturn uc.store.Save(uc.bookmarks)\n}"
+          }
+        },
+        {
+          "id": "application-layer/4",
+          "title": "InstallSkillUseCase — Self-Installing Claude Code Skill",
+          "explanation": "The `InstallSkillUseCase` handles installing the walkthrough skill definition and schema into a directory (by default `.claude/skills/code-walkthrough`). This is what makes the tool self-distributing — running `walkthrough install` writes the embedded `SKILL.md` and `walkthrough.schema.json` files so Claude Code can discover and use the skill.\n\nThe use case receives the embedded byte slices at construction time (passed through from `main.go` via the CLI layer) and delegates the actual file writing to a `SkillInstaller` port. This keeps the use case testable — you can inject a mock installer.\n\n`DefaultInstallDir()` provides a sensible default path, but the user can override it with the `--dir` flag.",
+          "codeSnippet": {
+            "filePath": "application/install.go",
+            "language": "go",
+            "startLine": 1,
+            "endLine": 29,
+            "source": "package application\n\nimport (\n\t\"path/filepath\"\n\n\t\"github.com/4thel00z/code-walkthrough/port\"\n)\n\ntype InstallSkillUseCase struct {\n\tinstaller port.SkillInstaller\n\tskill     []byte\n\tschema    []byte\n}\n\nfunc NewInstallSkillUseCase(installer port.SkillInstaller, skill, schema []byte) *InstallSkillUseCase {\n\treturn &InstallSkillUseCase{\n\t\tinstaller: installer,\n\t\tskill:     skill,\n\t\tschema:    schema,\n\t}\n}\n\nfunc (uc *InstallSkillUseCase) Install(dir string) error {\n\treturn uc.installer.Install(dir, uc.skill, uc.schema)\n}\n\nfunc (uc *InstallSkillUseCase) DefaultInstallDir() string {\n\treturn filepath.Join(\".claude\", \"skills\", \"code-walkthrough\")\n}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "adapter-layer",
+      "title": "Adapter Layer — External Integrations",
+      "description": "Concrete implementations of ports: file I/O, JSON parsing, TUI rendering, Mermaid-to-ASCII conversion, and bookmark persistence.",
+      "steps": [
+        {
+          "id": "adapter-layer/1",
+          "title": "FileRepository & JSONLoader — Loading Walkthroughs from Disk",
+          "explanation": "`FileRepository` is the simplest adapter: it wraps `os.ReadFile` and `os.WriteFile` behind the `WalkthroughRepository` interface. `JSONLoader` builds on it to deserialize walkthrough JSON into domain models.\n\nThe deserialization uses a separate set of `json*` struct types (e.g., `jsonWalkthrough`, `jsonSection`, `jsonStep`) rather than adding JSON tags directly to domain models. This is a deliberate architectural choice: domain types remain free of serialization concerns, and the `toDomain()` function acts as an anti-corruption layer that maps the JSON schema to the domain model.\n\nThis separation means the JSON format can evolve independently of the domain. Fields can be renamed in JSON, defaults can be applied during mapping, and the domain model never needs to compromise its naming or structure for serialization convenience.",
+          "codeSnippet": {
+            "filePath": "adapter/filesystem.go",
+            "language": "go",
+            "startLine": 66,
+            "endLine": 129,
+            "source": "type JSONLoader struct {\n\trepo *FileRepository\n}\n\nfunc NewJSONLoader(repo *FileRepository) *JSONLoader {\n\treturn &JSONLoader{repo: repo}\n}\n\nfunc (l *JSONLoader) Load(source string) (domain.Walkthrough, error) {\n\tdata, err := l.repo.Read(source)\n\tif err != nil {\n\t\treturn domain.Walkthrough{}, fmt.Errorf(\"reading walkthrough file: %w\", err)\n\t}\n\n\tvar jw jsonWalkthrough\n\tif err := json.Unmarshal(data, &jw); err != nil {\n\t\treturn domain.Walkthrough{}, fmt.Errorf(\"parsing walkthrough JSON: %w\", err)\n\t}\n\n\treturn toDomain(jw), nil\n}\n\nfunc toDomain(jw jsonWalkthrough) domain.Walkthrough {\n\tw := domain.Walkthrough{\n\t\tTitle:       jw.Title,\n\t\tDescription: jw.Description,\n\t\tScope:       domain.Scope(jw.Scope),\n\t\tRepository:  jw.Repository,\n\t}\n\n\tif jw.GeneratedAt != \"\" {\n\t\tt, err := time.Parse(time.RFC3339, jw.GeneratedAt)\n\t\tif err == nil {\n\t\t\tw.GeneratedAt = t\n\t\t}\n\t}\n\n\tfor _, js := range jw.Sections {\n\t\tsec := domain.NewSection(js.ID, js.Title, js.Description)\n\t\tfor _, jst := range js.Steps {\n\t\t\tstep := domain.NewStep(jst.ID, jst.Title, jst.Explanation)\n\t\t\tif jst.CodeSnippet != nil {\n\t\t\t\tstep.SetCodeSnippet(domain.CodeSnippet{\n\t\t\t\t\tFilePath:  jst.CodeSnippet.FilePath,\n\t\t\t\t\tLanguage:  jst.CodeSnippet.Language,\n\t\t\t\t\tStartLine: jst.CodeSnippet.StartLine,\n\t\t\t\t\tEndLine:   jst.CodeSnippet.EndLine,\n\t\t\t\t\tSource:    jst.CodeSnippet.Source,\n\t\t\t\t})\n\t\t\t}\n\t\t\tif jst.Diagram != nil {\n\t\t\t\tstep.SetDiagram(domain.Diagram{\n\t\t\t\t\tType:    domain.DiagramType(jst.Diagram.Type),\n\t\t\t\t\tMermaid: jst.Diagram.Mermaid,\n\t\t\t\t})\n\t\t\t}\n\t\t\tsec.AddStep(step)\n\t\t}\n\t\tw.AddSection(sec)\n\t}\n\n\treturn w\n}"
+          }
+        },
+        {
+          "id": "adapter-layer/2",
+          "title": "Bubble Tea TUI — Interactive Terminal Interface",
+          "explanation": "The TUI is built on the Elm architecture via Bubble Tea. The `Model` struct holds all application state: the walkthrough data, use case instances, rendering configuration, current view mode, search state, and terminal dimensions.\n\nThe TUI has five view modes: `viewStep` (main navigation), `viewTOC` (table of contents), `viewSearch` (full-text search), `viewBookmarks` (saved steps), and `viewHelp` (key binding reference). The `Update()` method dispatches key events to mode-specific handlers, and `View()` delegates to mode-specific renderers.\n\nThe `viewStep()` renderer is the most complex: it composes a header with section/step counters and bookmark indicator, the step title, explanation text, an optional code snippet with file path label, an optional ASCII-rendered Mermaid diagram, and a status bar with key hints. All styled with Lipgloss.",
+          "codeSnippet": {
+            "filePath": "adapter/tui.go",
+            "language": "go",
+            "startLine": 14,
+            "endLine": 67,
+            "source": "type viewMode int\n\nconst (\n\tviewStep viewMode = iota\n\tviewTOC\n\tviewSearch\n\tviewBookmarks\n\tviewHelp\n)\n\ntype Model struct {\n\twalkthrough   domain.Walkthrough\n\tnavigate      *application.NavigateUseCase\n\tsearch        *application.SearchUseCase\n\tbookmarks     *application.BookmarkUseCase\n\trenderer      *MermaidRenderer\n\tkeys          KeyMap\n\tstyles        Styles\n\tmode          viewMode\n\tshowDiagram   bool\n\tsearchInput   textinput.Model\n\tsearchResults []domain.SearchResult\n\ttocCursor     int\n\tlistCursor    int\n\twidth         int\n\theight        int\n}\n\nfunc NewModel(\n\tw domain.Walkthrough,\n\tnav *application.NavigateUseCase,\n\tsrch *application.SearchUseCase,\n\tbm *application.BookmarkUseCase,\n\trenderer *MermaidRenderer,\n) Model {\n\tti := textinput.New()\n\tti.Placeholder = \"Search...\"\n\tti.CharLimit = 100\n\n\treturn Model{\n\t\twalkthrough: w,\n\t\tnavigate:    nav,\n\t\tsearch:      srch,\n\t\tbookmarks:   bm,\n\t\trenderer:    renderer,\n\t\tkeys:        DefaultKeyMap(),\n\t\tstyles:      DefaultStyles(),\n\t\tmode:        viewStep,\n\t\tshowDiagram: true,\n\t\tsearchInput: ti,\n\t\twidth:       80,\n\t\theight:      24,\n\t}\n}"
+          },
+          "diagram": {
+            "type": "flowchart",
+            "mermaid": "flowchart TD\n    A[KeyMsg] --> B{Current Mode?}\n    B -->|viewStep| C[updateStep]\n    B -->|viewTOC| D[updateTOC]\n    B -->|viewSearch| E[updateSearch]\n    B -->|viewBookmarks| F[updateBookmarks]\n    B -->|viewHelp| G[Return to viewStep]\n    C --> H[View renders current mode]"
+          }
+        },
+        {
+          "id": "adapter-layer/3",
+          "title": "MermaidRenderer — ASCII Diagram Output",
+          "explanation": "The `MermaidRenderer` converts Mermaid DSL into ASCII art for terminal display. It handles two diagram types natively: sequence diagrams and flowcharts. All other types fall through to a raw text passthrough.\n\nFor sequence diagrams, the renderer parses participant names from arrow lines (`->>`, `-->>`, `->`, `-->`), builds a header row of participants with column separators, and draws each message as an arrow between the correct columns. The arrow direction and label are preserved.\n\nFor flowcharts, it parses edges (`-->`, `---`) and renders them as a vertical chain of boxes connected by arrows. Node labels are extracted from bracket or parenthesis notation. This is intentionally simple — it doesn't handle branching or complex layouts, but produces clean output for linear flows.",
+          "codeSnippet": {
+            "filePath": "adapter/mermaid.go",
+            "language": "go",
+            "startLine": 17,
+            "endLine": 31,
+            "source": "func (r *MermaidRenderer) Render(d domain.Diagram, width int) (string, error) {\n\tsource := strings.TrimSpace(d.Mermaid)\n\tif source == \"\" {\n\t\treturn \"\", nil\n\t}\n\n\tswitch d.Type {\n\tcase domain.DiagramSequence:\n\t\treturn r.renderSequence(source, width), nil\n\tcase domain.DiagramFlowchart:\n\t\treturn r.renderFlowchart(source, width), nil\n\tdefault:\n\t\treturn r.renderRaw(source, width), nil\n\t}\n}"
+          }
+        },
+        {
+          "id": "adapter-layer/4",
+          "title": "JSONBookmarkStore — Bookmark Persistence",
+          "explanation": "The `JSONBookmarkStore` persists bookmarks as a JSON array to a file alongside the walkthrough (typically `.bookmarks.json`). It implements the `BookmarkStore` port with `Save()` and `Load()` methods.\n\n`Save()` marshals the bookmark list with indentation for human readability and writes atomically via `os.WriteFile`. `Load()` reads and unmarshals, gracefully handling the case where the file doesn't exist yet (returns nil, nil — no bookmarks, no error).\n\nLike the walkthrough loader, this adapter uses its own JSON struct type (`jsonBookmark`) separate from the domain `Bookmark` type. This keeps serialization concerns out of the domain, though for this simple case the mapping is nearly 1:1.",
+          "codeSnippet": {
+            "filePath": "adapter/bookmarkstore.go",
+            "language": "go",
+            "startLine": 26,
+            "endLine": 61,
+            "source": "func (s *JSONBookmarkStore) Save(bookmarks []domain.Bookmark) error {\n\tjbs := make([]jsonBookmark, len(bookmarks))\n\tfor i, b := range bookmarks {\n\t\tjbs[i] = jsonBookmark{\n\t\t\tStepID:    string(b.StepID),\n\t\t\tCreatedAt: b.CreatedAt,\n\t\t}\n\t}\n\tdata, err := json.MarshalIndent(jbs, \"\", \"  \")\n\tif err != nil {\n\t\treturn err\n\t}\n\treturn os.WriteFile(s.path, data, 0644)\n}\n\nfunc (s *JSONBookmarkStore) Load() ([]domain.Bookmark, error) {\n\tdata, err := os.ReadFile(s.path)\n\tif err != nil {\n\t\tif errors.Is(err, os.ErrNotExist) {\n\t\t\treturn nil, nil\n\t\t}\n\t\treturn nil, err\n\t}\n\tvar jbs []jsonBookmark\n\tif err := json.Unmarshal(data, &jbs); err != nil {\n\t\treturn nil, err\n\t}\n\tbookmarks := make([]domain.Bookmark, len(jbs))\n\tfor i, jb := range jbs {\n\t\tbookmarks[i] = domain.Bookmark{\n\t\t\tStepID:    domain.StepID(jb.StepID),\n\t\t\tCreatedAt: jb.CreatedAt,\n\t\t}\n\t}\n\treturn bookmarks, nil\n}"
+          }
+        },
+        {
+          "id": "adapter-layer/5",
+          "title": "Embedded Skill Data — Self-Distributing CLI",
+          "explanation": "The `skilldata` package uses Go's `//go:embed` directive to compile the skill definition (`skill.md`) and JSON schema (`walkthrough.schema.json`) directly into the binary. These byte slices are passed through the CLI to the `InstallSkillUseCase`.\n\nThis pattern makes the CLI fully self-contained: a single binary can both view walkthroughs and install the Claude Code skill that generates them. No external files or network access required for installation.\n\nThe embedded files live in the `skilldata/` directory alongside the Go source, and also exist in the `schema/` directory at the repo root for reference. The `skilldata/` copies are the canonical sources that get compiled into the binary.",
+          "codeSnippet": {
+            "filePath": "skilldata/skilldata.go",
+            "language": "go",
+            "startLine": 1,
+            "endLine": 9,
+            "source": "package skilldata\n\nimport _ \"embed\"\n\n//go:embed skill.md\nvar SkillMD []byte\n\n//go:embed walkthrough.schema.json\nvar SchemaJSON []byte"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tui-interaction",
+      "title": "TUI Interaction — Keybindings & Styles",
+      "description": "How the terminal interface handles user input and renders styled output.",
+      "steps": [
+        {
+          "id": "tui-interaction/1",
+          "title": "KeyMap — Vim-Style Navigation Bindings",
+          "explanation": "The `KeyMap` struct defines all keyboard shortcuts using Bubble Tea's `key.Binding` type. Each binding specifies the trigger keys and a help description that's displayed in the help view.\n\nThe keybindings follow Vim conventions: `j`/`k` for next/prev, `/` for search, `g` for table of contents (like `gg` for top-of-file), `q` to quit. Additional bindings include `d` to toggle diagram visibility, `b`/`B` for bookmark operations, `e` for export, and `?` for help.\n\nUsing named `key.Binding` values rather than hardcoded key checks means the help screen is automatically generated from the same data structure that handles input — they can never go out of sync.",
+          "codeSnippet": {
+            "filePath": "adapter/tui_keymap.go",
+            "language": "go",
+            "startLine": 20,
+            "endLine": 35,
+            "source": "func DefaultKeyMap() KeyMap {\n\treturn KeyMap{\n\t\tNext:       key.NewBinding(key.WithKeys(\"j\", \"down\"), key.WithHelp(\"j/↓\", \"next step\")),\n\t\tPrev:       key.NewBinding(key.WithKeys(\"k\", \"up\"), key.WithHelp(\"k/↑\", \"prev step\")),\n\t\tTOC:        key.NewBinding(key.WithKeys(\"g\"), key.WithHelp(\"g\", \"table of contents\")),\n\t\tToggleDiag: key.NewBinding(key.WithKeys(\"d\"), key.WithHelp(\"d\", \"toggle diagram\")),\n\t\tSearch:     key.NewBinding(key.WithKeys(\"/\"), key.WithHelp(\"/\", \"search\")),\n\t\tEnter:      key.NewBinding(key.WithKeys(\"enter\"), key.WithHelp(\"enter\", \"select\")),\n\t\tBookmark:   key.NewBinding(key.WithKeys(\"b\"), key.WithHelp(\"b\", \"toggle bookmark\")),\n\t\tBookmarks:  key.NewBinding(key.WithKeys(\"B\"), key.WithHelp(\"B\", \"list bookmarks\")),\n\t\tExport:     key.NewBinding(key.WithKeys(\"e\"), key.WithHelp(\"e\", \"export\")),\n\t\tEscape:     key.NewBinding(key.WithKeys(\"esc\"), key.WithHelp(\"esc\", \"back\")),\n\t\tHelp:       key.NewBinding(key.WithKeys(\"?\"), key.WithHelp(\"?\", \"help\")),\n\t\tQuit:       key.NewBinding(key.WithKeys(\"q\", \"ctrl+c\"), key.WithHelp(\"q\", \"quit\")),\n\t}\n}"
+          }
+        },
+        {
+          "id": "tui-interaction/2",
+          "title": "Styles — Lipgloss Terminal Theming",
+          "explanation": "The `Styles` struct defines the visual appearance of every TUI element using Lipgloss. Each style is a composable configuration of foreground color, background color, padding, borders, and text attributes like bold.\n\nThe color scheme uses ANSI 256 colors for broad terminal compatibility: blue (12) for headers, white (15) for step titles, green (10) for code, cyan (14) for diagrams, yellow (11) for highlights, and gray (8) for muted text. Code and diagram blocks get rounded borders in gray.\n\nThe status bar uses a dark gray background (237) for visual separation from the content area. All styles are created once via `DefaultStyles()` and shared across the model — they're value types in Lipgloss, so this is safe and efficient.",
+          "codeSnippet": {
+            "filePath": "adapter/tui_styles.go",
+            "language": "go",
+            "startLine": 19,
+            "endLine": 33,
+            "source": "func DefaultStyles() Styles {\n\treturn Styles{\n\t\tHeader:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(\"12\")).Padding(0, 1),\n\t\tStepTitle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(\"15\")).Padding(1, 1),\n\t\tExplanation: lipgloss.NewStyle().Foreground(lipgloss.Color(\"7\")).Padding(0, 1),\n\t\tCodeBlock:   lipgloss.NewStyle().Foreground(lipgloss.Color(\"10\")).Padding(0, 2),\n\t\tCodeBorder:  lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(\"8\")).Padding(0, 1),\n\t\tDiagBlock:   lipgloss.NewStyle().Foreground(lipgloss.Color(\"14\")).Padding(0, 2),\n\t\tDiagBorder:  lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(\"8\")).Padding(0, 1),\n\t\tStatusBar:   lipgloss.NewStyle().Background(lipgloss.Color(\"237\")).Foreground(lipgloss.Color(\"7\")).Padding(0, 1),\n\t\tHighlight:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(\"11\")),\n\t\tMuted:       lipgloss.NewStyle().Foreground(lipgloss.Color(\"8\")),\n\t\tBookmark:    lipgloss.NewStyle().Foreground(lipgloss.Color(\"13\")),\n\t}\n}"
+          }
+        }
+      ]
+    }
+  ]
+}

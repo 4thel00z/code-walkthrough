@@ -23,13 +23,18 @@ func NewRootCmd(embeddedSkill, embeddedSchema []byte) *cobra.Command {
 	return root
 }
 
+const defaultWalkthroughPath = ".walkthrough/walkthrough.json"
+
 func newViewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "view [file.json]",
 		Short: "Open an interactive walkthrough in the TUI",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path := args[0]
+			path := defaultWalkthroughPath
+			if len(args) > 0 {
+				path = args[0]
+			}
 
 			repo := NewFileRepository()
 			loader := NewJSONLoader(repo)
